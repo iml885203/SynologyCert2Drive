@@ -1,0 +1,58 @@
+#!/bin/bash
+
+## This script need run as root
+if [ $(whoami) != "root" ]; then
+    echo "Failed. This script need run as root."
+    exit 1
+fi
+
+## Variables
+# path
+SOURCE_PATH="/usr/syno/etc/certificate/_archive/your_cert_folder/"
+TARGET_PATH="/volume1/your/target/path/"
+# verify
+VERIFY_DOMAIN_NAME="your.domain"
+# docker
+DOCKER_CONTAINER="container_name_for_restart"
+
+## Validate
+VERIFY_DOMAIN=false
+FILE_UPDATED=false
+
+# verify domain
+RENEW_FILE_DOMAIN=$(cat ${SOURCE_PATH}renew.json | jq --raw-output '.domains')
+if [ $RENEW_FILE_DOMAIN == "${VERIFY_DOMAIN_NAME};${VERIFY_DOMAIN_NAME}" ]; then
+    VERIFY_DOMAIN=true
+fi
+
+# verify file
+if $(cmp -s "${SOURCE_PATH}cert.pem" "${TARGET_PATH}cert.pem") && \
+   $(cmp -s "${SOURCE_PATH}chain.pem" "${TARGET_PATH}chain.pem") && \
+   $(cmp -s "${SOURCE_PATH}privkey.pem" "${TARGET_PATH}privkey.pem")
+then
+    echo "Certs file not updated"
+else
+    echo "Certs files updated"
+    FILE_UPDATED=true
+fi
+
+## Start copy cert
+if $VERIFY_DOMAIN && $FILE_UPDATED; then
+    echo "Copy certs to folder..."
+    # backup
+    cp "${TARGET_PATH}cert.pem" "${TARGET_PATH}cert.pem.backup"
+    cp "${TARGET_PATH}chain.pem" "${TARGET_PATH}chain.pem.backup"
+    cp "${TARGET_PATH}privkey.pem" "${TARGET_PATH}privkey.pem.backup"
+
+    # replace
+    cp "${SOURCE_PATH}cert.pem" "${TARGET_PATH}cert.pem"
+    cp "${SOURCE_PATH}chain.pem" "${TARGET_PATH}chain.pem"
+    cp "${SOURCE_PATH}privkey.pem" "${TARGET_PATH}privkey.pem"
+
+    # docker container restart
+    /usr/local/bin/docker restart $DOCKER_CONTAINER
+
+    # interrupt for email notify
+    echo "Done"
+    exit 1
+fi
